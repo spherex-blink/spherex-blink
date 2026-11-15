@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two Telescopes, One Comet</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--txt:#dde2ea;--dim:#8b93a3;--csa:#ff5a5f;--nasa:#4fa3ff;--co2:#ffb020;--ok:#5bd68a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:26px;margin:4px 0 2px}
+h2{font-size:18px;margin:34px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px}
+p{margin:6px 0}
+.sub{color:var(--dim);margin:0 0 14px}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;letter-spacing:.02em}
+.tag.csa{background:rgba(255,90,95,.15);color:var(--csa);border:1px solid rgba(255,90,95,.5)}
+.tag.nasa{background:rgba(79,163,255,.15);color:var(--nasa);border:1px solid rgba(79,163,255,.5)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:14px 0}
+.fact{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.fact b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.fact span{color:var(--dim);font-size:13px}
+.player{display:grid;grid-template-columns:minmax(0,488px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:800px){.player{grid-template-columns:1fr}}
+.screen{position:relative;width:100%;max-width:488px;aspect-ratio:1;background:#000;border:3px solid var(--line);border-radius:6px;overflow:hidden}
+.screen.csa{border-color:var(--csa)}.screen.nasa{border-color:var(--nasa)}
+.screen canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
+.screen .ov{position:absolute;inset:0;pointer-events:none}
+#flabel{position:absolute;left:8px;top:8px;font:600 13px ui-monospace,monospace;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.65)}
+#fdate{position:absolute;left:8px;bottom:8px;font:13px ui-monospace,monospace;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.65);color:#fff}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+button,select{background:#232836;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:#4a5263}
+input[type=range]{flex:1;min-width:160px}
+.mono{font-family:ui-monospace,monospace;font-size:13px}
+.dim{color:var(--dim)}
+.legend{font-size:13px;color:var(--dim)}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+.strip{position:relative;height:46px;margin-top:6px;background:var(--panel);border:1px solid var(--line);border-radius:6px;cursor:pointer}
+.pairs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.pair{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px}
+.pair .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pair canvas{width:100%;aspect-ratio:1;image-rendering:pixelated;background:#000;border-radius:3px}
+.pair .cap{font:12px ui-monospace,monospace;color:var(--dim);margin-top:4px}
+#lc{width:100%;height:420px;background:var(--panel);border:1px solid var(--line);border-radius:8px;display:block}
+.credits{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--dim)}
+.credits b{color:var(--txt)}
+#err{color:#ff7b7b}
+.fly{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:800px){.fly{grid-template-columns:1fr}}
+.flybox .screen{max-width:none}
+.flycap{font-size:13px;color:var(--dim);margin-top:4px}
+a{color:var(--nasa)}
+</style>
+</head>
+<body>
+<main>
+<h1>One interstellar comet, two space telescopes</h1>
+<p class="sub">3I/ATLAS, only the third known visitor from another star system, seen in visible light by
+<span class="tag csa">NEOSSat · Canadian Space Agency</span> and in the infrared by <span class="tag nasa">SPHEREx · NASA</span>.</p>
+<div id="err"></div>
+<div class="facts" id="facts"></div>
+
+<div id="flysec">
+<h2>Watch it move: the stars stay still, the comet crosses them</h2>
+<p>Each video is one sitting of one telescope, put on a fixed patch of sky. The dots that stay put are stars; the fuzzy blob that slides along the
+orange line is the interstellar comet. <b>Left:</b> Canada's NEOSSat, 58 minutes on 27 Nov 2025. <b>Right:</b> NASA's SPHEREx, 13 hours on 14 Dec 2025
+(a much larger patch of sky, so the comet travels further).</p>
+<div class="fly">
+  <div class="flybox" id="flyN"></div>
+  <div class="flybox" id="flyS"></div>
+</div>
+</div>
+
+<h2 id="h1">1 · The comet's journey, both telescopes on one timeline</h2>
+<div class="player">
+  <div>
+    <div class="screen" id="screen">
+      <canvas id="cv" width="61" height="61"></canvas>
+      <svg class="ov" id="ov" viewBox="0 0 488 488"></svg>
+      <div id="flabel"></div><div id="fdate"></div>
+    </div>
+    <div class="controls">
+      <button id="play">▶ Play</button><button id="prev">◀</button><button id="next">▶</button>
+      <input type="range" id="slider" min="0" max="0" value="0" aria-label="frame">
+    </div>
+    <div class="controls">
+      <label>Show <select id="which"><option value="both">both telescopes</option><option value="neossat">NEOSSat only</option><option value="spherex">SPHEREx only</option></select></label>
+      <label>Speed <select id="fps"><option>1</option><option selected>3</option><option>6</option><option>12</option></select> fps</label>
+    </div>
+  </div>
+  <div>
+    <p>Every frame is centred on the object's predicted position (cyan circle) and shows the same <b>3′ × 3′</b> patch of sky,
+    north up, east left. NEOSSat pixels are 3.0″; SPHEREx pixels are 6.15″, so its frames look blockier. <span id="story">Watch the comet brighten
+    and grow a coma as it swings past the Sun (perihelion <b>29 Oct 2025</b>), then fade.</span></p>
+    <p class="legend">Each frame is scaled by its own noise (asinh, −2 to +10σ), because the telescopes' units differ.
+    <span class="sw" style="background:#ff00c8"></span>magenta = no data.</p>
+    <div class="mono" id="finfo"></div>
+    <div class="strip" id="strip" title="click to jump"></div>
+    <p class="legend"><span class="sw" style="background:var(--csa)"></span>NEOSSat frame
+      <span class="sw" style="background:var(--nasa);margin-left:10px"></span>SPHEREx frame
+      <span id="perileg"><span class="sw" style="background:#fff;margin-left:10px;width:2px"></span>perihelion</span></p>
+  </div>
+</div>
+
+<h2>2 · Same night, two telescopes: side-by-side pairs</h2>
+<p>NEOSSat images taken within a few hours of a SPHEREx image, both put on SPHEREx's 6.15″ grid (6.3′ field). Left: visible light
+(0.4–0.9 µm); right: infrared (the wavelength is in the caption).</p>
+<div class="pairs" id="pairs"></div>
+
+<div id="cometOnly">
+<h2>3 · Light curves: brightness over time</h2>
+<p>Brightness in a 20″-radius aperture. NEOSSat magnitudes are calibrated on hundreds of Gaia stars in each image, then converted to
+millijansky. SPHEREx fluxes come from NASA's calibrated images. Two independent telescopes, two calibrations: SPHEREx at 0.7–1.0 µm reads
+1.2–1.4× NEOSSat's visible flux, <b>just what sunlight reflected by dust should give</b> (the Sun itself is ~1.3× brighter at 0.85 µm than at
+0.6 µm, per unit frequency). The orange points show carbon dioxide: SPHEREx's 4.15–4.45 µm channel, where CO₂
+gas glows, outshines its neighbours.</p>
+<canvas id="lc" width="1100" height="420"></canvas>
+<p class="legend" id="lclegend"></p>
+<div class="mono dim" id="xcheck"></div>
+
+</div>
+<h2>4 · How we checked it</h2>
+<div class="mono" id="valid"></div>
+
+<h2>5 · Every asteroid and comet seen by both telescopes</h2>
+<p id="galintro" class="dim">Loading the gallery…</p>
+<div class="pairs" id="gallery"></div>
+
+<h2>Credits</h2>
+<div class="credits" id="credits"></div>
+</main>
+
+<script type="module">
+import { loadNeossat, loadNeossatIndex, mergeTimeline, normaliseFrame, decodeF32, NEOSSAT_CREDIT } from "./neossat.mjs";
+
+const $ = (id) => document.getElementById(id);
+const NAN = [255, 0, 200], PERI = 60977.5;            // perihelion 2025-10-29 ~11 UT
+const A0 = Math.asinh(-2), A1 = Math.asinh(10);
+let neo, timeline = [], view = [], cur = 0, timer = null;
+let slug = new URLSearchParams(location.search).get("object") || "3i-atlas";
+
+function render(canvas, data, n, crop = 0) {
+  const m = n - 2 * crop;
+  canvas.width = m; canvas.height = m;
+  const z = normaliseFrame(data), ctx = canvas.getContext("2d"), im = ctx.createImageData(m, m);
+  for (let y = 0; y < m; y++) for (let x = 0; x < m; x++) {
+    const v = z[(y + crop) * n + (x + crop)], o = ((m - 1 - y) * m + x) * 4;   // row 0 = south -> bottom
+    if (!Number.isFinite(v)) { im.data[o] = NAN[0]; im.data[o + 1] = NAN[1]; im.data[o + 2] = NAN[2]; }
+    else { const g = Math.round(255 * Math.min(1, Math.max(0, (Math.asinh(v) - A0) / (A1 - A0)))); im.data[o] = im.data[o + 1] = im.data[o + 2] = g; }
+    im.data[o + 3] = 255;
+  }
+  ctx.putImageData(im, 0, 0);
+}
+const fmtDate = (s) => s.replace("T", " ").replace("Z", " UTC");
+
+function show(i) {
+  if (!view.length) return;
+  cur = (i + view.length) % view.length;
+  const f = view[cur], isN = f.telescope_id === "neossat";
+  render($("cv"), f.data, f.n);
+  const scr = $("screen"); scr.className = "screen " + (isN ? "csa" : "nasa");
+  $("flabel").textContent = isN ? "NEOSSat · CSA · visible" : "SPHEREx · NASA · infrared";
+  $("flabel").style.color = isN ? "var(--csa)" : "var(--nasa)";
+  $("fdate").textContent = fmtDate(f.date_time);
+  // overlay: circle at the target (frame px -> 488 view), scale bar 1'
+  const s = 488 / f.n, [tx, ty] = f.targetPx, cx = (tx + 0.5) * s, cy = 488 - (ty + 0.5) * s;
+  const bar = 60 / f.pix_arcsec * s;
+  $("ov").innerHTML = `<circle cx="${cx}" cy="${cy}" r="${(isN ? 10 : 5) * s}" fill="none" stroke="#4fe3ff" stroke-width="1.5" opacity=".8"/>` +
+    `<line x1="${480 - bar}" y1="470" x2="480" y2="470" stroke="#fff" stroke-width="2"/><text x="${480 - bar / 2}" y="462" fill="#fff" font-size="13" text-anchor="middle" font-family="monospace">1′</text>`;
+  const src = f.source;
+  const days = (f.mjd - PERI).toFixed(0);
+  $("finfo").innerHTML = `frame ${cur + 1}/${view.length}` + (slug === "3i-atlas" ? ` · ${days < 0 ? days : "+" + days} d from perihelion` : "") + `<br>` +
+    (isN ? `exposure ${src.exptime_s.toFixed(0)} s · G ≈ ${src.mag_10 ?? "–"} (10″) · ${src.image}`
+         : `detector D${src.det} · λ ${src.lambda_um ? src.lambda_um.toFixed(2) : "?"} µm · ${src.obs}`) +
+    `<br>distance from Earth ${(src.delta_au ?? 0).toFixed(2)} AU`;
+  $("slider").value = cur;
+  drawStrip();
+}
+
+function drawStrip() {
+  const el = $("strip"), t0 = Math.min(...timeline.map((f) => f.mjd)) - 5, t1 = Math.max(...timeline.map((f) => f.mjd)) + 5;
+  const x = (m) => ((m - t0) / (t1 - t0) * 100).toFixed(2) + "%";
+  let h = slug === "3i-atlas" ? `<div style="position:absolute;left:${x(PERI)};top:0;bottom:0;width:2px;background:#fff;opacity:.7"></div>` : "";
+  view.forEach((f, i) => {
+    const isN = f.telescope_id === "neossat";
+    h += `<div data-i="${i}" style="position:absolute;left:${x(f.mjd)};top:${isN ? 6 : 26}px;width:${i === cur ? 4 : 2}px;height:14px;` +
+         `background:${isN ? "var(--csa)" : "var(--nasa)"};opacity:${i === cur ? 1 : .55}"></div>`;
+  });
+  const months = [];
+  const span = t1 - t0, stepM = span > 400 ? 3 : 1;
+  for (let y = 2025, mo = 4; y < 2027; mo += stepM) { if (mo > 12) { mo -= 12; y++; } const m = Date.UTC(y, mo - 1, 1) / 864e5 + 40587; if (m > t1) break; if (m > t0) months.push([m, `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][mo - 1]}`]); }
+  for (const [m, s] of months) h += `<span style="position:absolute;left:${x(m)};bottom:-1px;font-size:10px;color:var(--dim)">${s}</span>`;
+  el.innerHTML = h;
+}
+
+function setView() {
+  const w = $("which").value;
+  view = timeline.filter((f) => w === "both" || f.telescope_id === w);
+  $("slider").max = view.length - 1;
+  show(0);
+}
+function play(on) {
+  clearInterval(timer); timer = null;
+  if (on) timer = setInterval(() => show(cur + 1), 1000 / +$("fps").value);
+  $("play").textContent = timer ? "❚❚ Pause" : "▶ Play";
+}
+
+function drawPairs() {
+  const box = $("pairs");
+  box.innerHTML = neo.pairs.length ? "" : `<p class="dim">No NEOSSat image of ${neo.name} was taken within 6 hours of a SPHEREx image ` +
+    `(closest frames are on the timeline above).</p>`;
+  for (const p of neo.pairs) {
+    const f = neo.frames[p.neossat];
+    const d = document.createElement("div"); d.className = "pair";
+    d.innerHTML = `<div class="two"><canvas></canvas><canvas></canvas></div>` +
+      `<div class="cap"><span style="color:var(--csa)">NEOSSat</span> ${fmtDate(f.date_time).slice(0, 16)}<br>` +
+      `<span style="color:var(--nasa)">SPHEREx</span> ${fmtDate(p.spherex_date_time).slice(0, 16)} · D${p.spherex_det}${p.spherex_lambda_um ? ` · ${p.spherex_lambda_um.toFixed(2)} µm` : ""}<br>` +
+      `Δt ${p.dt_hours > 0 ? "+" : ""}${p.dt_hours.toFixed(1)} h</div>`;
+    const [a, b] = d.querySelectorAll("canvas");
+    render(a, p.neossatData, p.n); render(b, p.spherexData, p.n);
+    box.appendChild(d);
+  }
+}
+
+function drawLC() {
+  const cv = $("lc"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const lc = neo.lightcurve, GZ = 3228.75e3;
+  const nl = lc.neossat.filter((p) => p.valid && p.mag_20 != null).map((p) => ({ x: p.mjd, y: GZ * 10 ** (-p.mag_20 / 2.5) }));
+  const sx = lc.spherex.filter((p) => p.valid && p.flux_mJy_20 > 0);
+  const vis = sx.filter((p) => p.lambda_um < 1.0).map((p) => ({ x: p.mjd, y: p.flux_mJy_20 }));
+  const co2 = sx.filter((p) => p.lambda_um >= 4.15 && p.lambda_um < 4.45).map((p) => ({ x: p.mjd, y: p.flux_mJy_20 }));
+  const cont = sx.filter((p) => p.lambda_um >= 3.9 && p.lambda_um < 4.15).map((p) => ({ x: p.mjd, y: p.flux_mJy_20 }));
+  const all = [...nl, ...vis, ...co2, ...cont];
+  const t0 = Math.min(...all.map((p) => p.x)) - 8, t1 = Math.max(...all.map((p) => p.x)) + 8;
+  const yl = Math.log10(0.05), yh = Math.log10(Math.max(...all.map((p) => p.y)) * 1.5);
+  const L = 62, R = 16, T = 16, B = 40;
+  const X = (m) => L + (m - t0) / (t1 - t0) * (W - L - R), Y = (v) => T + (yh - Math.log10(Math.max(v, 0.05))) / (yh - yl) * (H - T - B);
+  g.fillStyle = "#171a21"; g.fillRect(0, 0, W, H);
+  g.font = "12px ui-monospace,monospace"; g.fillStyle = "#8b93a3"; g.strokeStyle = "#2a2f3a"; g.lineWidth = 1;
+  for (let e = Math.ceil(yl); e <= yh; e++) { const y = Y(10 ** e); g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.fillText((10 ** e >= 1 ? 10 ** e : (10 ** e).toFixed(1)) + " mJy", 4, y + 4); }
+  for (let y = 2025, mo = 7; ; mo++) { if (mo > 12) { mo = 1; y++; } const m = Date.UTC(y, mo - 1, 1) / 864e5 + 40587; if (m > t1) break; if (m < t0) continue;
+    g.beginPath(); g.moveTo(X(m), T); g.lineTo(X(m), H - B); g.stroke();
+    g.fillText(["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][mo - 1] + (mo === 1 || m - t0 < 31 ? " " + y : ""), X(m) + 3, H - B + 16); }
+  g.strokeStyle = "#fff"; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(X(PERI), T); g.lineTo(X(PERI), H - B); g.stroke(); g.setLineDash([]);
+  g.fillStyle = "#fff"; g.fillText("perihelion", X(PERI) + 4, T + 12);
+  const dots = (pts, col, r, shape) => { g.fillStyle = col; for (const p of pts) { g.beginPath(); if (shape === "sq") g.rect(X(p.x) - r, Y(p.y) - r, 2 * r, 2 * r); else g.arc(X(p.x), Y(p.y), r, 0, 7); g.fill(); } };
+  dots(cont, "rgba(160,170,190,.55)", 2.5);
+  dots(co2, "#ffb020", 3.2);
+  dots(vis, "#4fa3ff", 3.2);
+  dots(nl, "#ff5a5f", 3.4, "sq");
+  $("lclegend").innerHTML = `<span class="sw" style="background:#ff5a5f"></span>NEOSSat visible (G-band, Gaia-calibrated) &nbsp; ` +
+    `<span class="sw" style="background:#4fa3ff"></span>SPHEREx 0.7–1.0 µm &nbsp; <span class="sw" style="background:#ffb020"></span>SPHEREx 4.15–4.45 µm (CO₂ band) &nbsp; ` +
+    `<span class="sw" style="background:#a0aabe"></span>SPHEREx 3.9–4.15 µm (continuum next to CO₂) · log scale · stray high points = field stars in the aperture`;
+  const xc = lc.cross_check, rows = Object.entries(xc).filter(([, v]) => v.spherex_0p7_1p0um_mJy != null);
+  $("xcheck").innerHTML = rows.map(([k, v]) => `${k}: NEOSSat ${v.neossat_mJy_approx ?? "–"} mJy vs SPHEREx 0.7–1.0 µm ${v.spherex_0p7_1p0um_mJy} mJy · ` +
+    `CO₂ band ${v.co2_band_mJy} mJy vs continuum ${v.co2_continuum_mJy} mJy (×${v.co2_ratio ?? "–"})`).join("<br>") +
+    `<br>(medians in a 20″ aperture; NEOSSat converted with the Gaia G zero point 3229 Jy)`;
+}
+
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length % 2 ? s[s.length >> 1] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
+function facts() {
+  const v = neo.validation, xc = neo.lightcurve.cross_check, lc = neo.lightcurve.neossat.filter((p) => p.valid);
+  const best = lc.reduce((a, b) => (b.mag_10 < a.mag_10 ? b : a));
+  best.date = new Date((best.mjd - 40587) * 864e5).toISOString().slice(0, 10);
+  const aug = xc["Aug 2025"], dec = xc["Dec 2025"];
+  const first = neo.frames[0].date_time.slice(0, 10), last = neo.frames[neo.frames.length - 1].date_time.slice(0, 10);
+  const items = [
+    [`${neo.frames.length} + ${neo.spherex_frames.length}`, `NEOSSat + SPHEREx images on one timeline, ${first} → ${last}`],
+    [`${(v.offset_neossat_centred_px_median * 3).toFixed(1)}″`, `comet vs prediction (NEOSSat as observer; ${(v.offset_geocentric_px_median * 3).toFixed(1)}″ if computed from Earth's centre)`],
+    [`${Math.round(10 ** ((median(lc.filter((p) => p.mjd < 60920).map((p) => p.mag_10)) - best.mag_10) / 2.5))}×`, `brighter at its peak (G ≈ ${best.mag_10.toFixed(1)} in 10″, ${best.date}) than its August median`],
+    [`${(aug.spherex_0p7_1p0um_mJy / aug.neossat_mJy_approx).toFixed(2)} / ${(dec.spherex_0p7_1p0um_mJy / dec.neossat_mJy_approx).toFixed(2)}`, `SPHEREx (0.7–1.0 µm) ÷ NEOSSat (visible) flux, Aug / Dec 2025: reflected sunlight predicts ≈ 1.3. Two calibrations, one answer`],
+    [`×${aug.co2_ratio}`, `CO₂ band brighter than the neighbouring infrared in Aug 2025 (SPHEREx 4.15–4.45 µm)`],
+  ];
+  $("facts").innerHTML = items.map(([b, s]) => `<div class="fact"><b>${b}</b><span>${s}</span></div>`).join("");
+  $("valid").innerHTML =
+    `• NEOSSat images found by CADC's Solar System Object Image Search (SSOIS): 3,699 of 3I/ATLAS; only the stable-pointing (FINE_POINT) frames are usable, ` +
+    `checked by reading each file's header before downloading.<br>` +
+    `• The header sky coordinates are the commanded pointing, off by ${v.header_wcs_error_px_median} px (~${Math.round(v.header_wcs_error_px_median * 3)}″). ` +
+    `We re-fit every image on Gaia DR3 stars (median ${v.gaia_matches_median} stars): residual ${v.wcs_fit_rms_px_median} px rms; ${v.n_wcs_ok}/${v.n_images} images solved.<br>` +
+    `• Comet position from JPL Horizons with NEOSSat itself (−139089) as observer: measured centroid within ${v.offset_neossat_centred_px_median} px ` +
+    `(${(v.offset_neossat_centred_px_median * 3).toFixed(1)}″) median in ${v.n_clean_detections} clean detections; from Earth's centre it would be ${v.offset_geocentric_px_median} px. ` +
+    `NEOSSat's 800 km orbit shifts the comet by ${v.neossat_minus_geo_px_median} px.<br>` +
+    `• Photometry on the original pixels, sky from a 40–60″ annulus; zero point per image from Gaia G of field stars. Comets are extended, so these are aperture magnitudes, not total magnitudes.<br>` +
+    `• SPHEREx: the same aperture code as our star light curves, at SPHEREx-centred positions (Horizons −163182).`;
+  $("credits").innerHTML = `<b>${NEOSSAT_CREDIT}</b><br>${neo.credit}<br>${neo.licence}<br>` +
+    `Made by team Halal Haemek (NASA Space Apps 2026, Haifa) · <a href="./demo.html">SPHEREx blink demo</a> · data file: <a href="./neossat/${slug}.json">neossat/${slug}.json</a>`;
+}
+
+function genericFacts() {
+  const v = neo.validation || {}, fr = neo.frames;
+  const first = fr[0]?.date_time.slice(0, 10), last = fr[fr.length - 1]?.date_time.slice(0, 10);
+  const items = [
+    [`${neo.n_neossat_ssois}`, `NEOSSat images of ${neo.name} in the SPHEREx era (SSOIS)`],
+    [`${neo.n_spherex}`, `SPHEREx images containing it (our sky index + JPL Horizons)`],
+    [`${fr.length} + ${(neo.spherex_frames || []).length}`, `NEOSSat + SPHEREx frames on the timeline below, ${first} → ${last}`],
+    [`${v.n_detected ?? 0}/${v.n_wcs_ok ?? 0}`, `NEOSSat frames where it is detected (peak > 5σ within 7.5″ of the prediction)` +
+      (v.offset_px_median != null ? `; median offset ${(v.offset_px_median * 3).toFixed(1)}″` : "")],
+  ];
+  if (v.predicted_mag_median != null) items.push([`V ≈ ${v.predicted_mag_median}`, `predicted brightness (JPL Horizons); NEOSSat reaches ≈ 17-18 in 100 s`]);
+  $("facts").innerHTML = items.map(([b, s]) => `<div class="fact"><b>${b}</b><span>${s}</span></div>`).join("");
+  $("valid").innerHTML = `• Same pipeline as 3I/ATLAS: FINE_POINT frames only, WCS re-fitted on Gaia DR3 per image (median residual ${v.wcs_fit_rms_px_median ?? "–"} px), ` +
+    `positions from JPL Horizons with NEOSSat (−139089) as observer, up to 30 frames chosen closest in time to SPHEREx images.<br>` +
+    `• The SPHEREx path (${neo.n_spherex} exposures, SPHEREx-centred) is published as <a href="./neossat/${neo.spherex_mover}">neossat/${neo.spherex_mover}</a> ` +
+    `in the same format as the app's mover files, so the asteroid/comet mode can play it live from NASA.`;
+  $("credits").innerHTML = `<b>${NEOSSAT_CREDIT}</b><br>${neo.credit}<br>${neo.licence}`;
+}
+
+function flyPlayer(box, doc, cls, label) {
+  box.innerHTML = `<div class="screen ${cls}"><canvas></canvas><svg class="ov" viewBox="0 0 488 488"></svg>` +
+    `<div class="flab" style="position:absolute;left:8px;top:8px;font:600 13px ui-monospace,monospace;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.65);color:var(--${cls})">${label}</div>` +
+    `<div class="fdt" style="position:absolute;left:8px;bottom:8px;font:13px ui-monospace,monospace;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.65);color:#fff"></div></div>` +
+    `<div class="controls"><button>❚❚ Pause</button><input type="range" min="0" max="${doc.frames.length - 1}" value="0"></div>` +
+    `<div class="flycap"></div>`;
+  const cv = box.querySelector("canvas"), ov = box.querySelector("svg"), btn = box.querySelector("button"), sl = box.querySelector("input");
+  const frames = doc.frames.map((f) => ({ ...f, data: decodeF32(f.data_b64_f32le) }));
+  const s = 488 / doc.n, P = (p) => [(p[0] + 0.5) * s, 488 - (p[1] + 0.5) * s];
+  const path = doc.path.map((p) => P(p).map((v) => v.toFixed(1)).join(",")).join(" ");
+  const bar = 60 / doc.pix_arcsec * s;
+  const t0 = frames[0].mjd;
+  let i = 0, tm = null;
+  const show = (k) => {
+    i = (k + frames.length) % frames.length;
+    const f = frames[i];
+    render(cv, f.data, doc.n);
+    const [cx, cy] = P(f.targetPx);
+    ov.innerHTML = `<polyline points="${path}" fill="none" stroke="#ff9f1c" stroke-width="1.5" stroke-dasharray="4 3" opacity=".8"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="${Math.max(12, 30 / doc.pix_arcsec * s)}" fill="none" stroke="#4fe3ff" stroke-width="1.5"/>` +
+      `<line x1="${480 - bar}" y1="470" x2="480" y2="470" stroke="#fff" stroke-width="2"/><text x="${480 - bar / 2}" y="462" fill="#fff" font-size="13" text-anchor="middle" font-family="monospace">1′</text>`;
+    const dm = (f.mjd - t0) * 1440;
+    box.querySelector(".fdt").textContent = `${f.date_time.slice(0, 16).replace("T", " ")} UTC · +${dm < 120 ? dm.toFixed(0) + " min" : (dm / 60).toFixed(1) + " h"}`;
+    sl.value = i;
+  };
+  const play = (on) => { clearInterval(tm); tm = on ? setInterval(() => show(i + 1), doc.frames.length > 25 ? 150 : 400) : null; btn.textContent = tm ? "❚❚ Pause" : "▶ Play"; };
+  btn.onclick = () => play(!tm);
+  sl.oninput = () => { play(false); show(+sl.value); };
+  box.querySelector(".flycap").innerHTML = `${doc.telescope} · ${doc.band} · ${doc.n_frames} frames over ` +
+    `${doc.duration_min != null ? doc.duration_min + " min" : doc.duration_h + " h"} · comet moves ${(doc.motion_arcsec / 60).toFixed(1)}′ · ` +
+    `field ${(doc.n * doc.pix_arcsec / 60).toFixed(1)}′ · ${+doc.pix_arcsec.toFixed(2)}″ pixels` +
+    (doc.centroid_offset_px_median != null ? `<br>stars aligned to ${doc.wcs_rms_px_median} px (Gaia); comet within ${(doc.centroid_offset_px_median * 3).toFixed(1)}″ of its predicted path` : "");
+  show(0); play(true);
+}
+
+async function flybys() {
+  const base = new URL("./neossat/", import.meta.url);
+  const get = async (n) => { const r = await fetch(new URL(n, base)); if (!r.ok) throw new Error(n + " HTTP " + r.status); return r.json(); };
+  try { flyPlayer($("flyN"), await get("3i-atlas-flyby-neossat.json"), "csa", "NEOSSat · CSA · visible"); }
+  catch (e) { $("flyN").textContent = "NEOSSat fly-by not available: " + e.message; }
+  try { flyPlayer($("flyS"), await get("3i-atlas-flyby-spherex.json"), "nasa", "SPHEREx · NASA · infrared"); }
+  catch (e) { $("flyS").textContent = "SPHEREx fly-by not available: " + e.message; }
+}
+
+async function loadObject(s, scroll) {
+  play(false);
+  slug = s;
+  neo = await loadNeossat(undefined, slug);
+  const isShow = slug === "3i-atlas";
+  timeline = mergeTimeline(neo.frames, neo.spherex_frames || [], { onlyValid: isShow });
+  $("h1").textContent = isShow ? `1 · The whole journey, Jul 2025 → Feb 2026 (each frame re-centred on the comet)` : `1 · ${neo.name}: both telescopes on one timeline`;
+  $("story").style.display = isShow ? "" : "none";
+  $("perileg").style.display = isShow ? "" : "none";
+  $("cometOnly").style.display = isShow ? "" : "none";
+  if (isShow) { facts(); drawLC(); } else genericFacts();
+  setView(); drawPairs();
+  document.querySelectorAll(".gcard").forEach((c) => c.style.outline = c.dataset.slug === slug ? "2px solid var(--csa)" : "none");
+  history.replaceState(null, "", isShow ? location.pathname : `?object=${slug}`);
+  $("flysec").style.display = isShow ? "" : "none";
+  if (scroll) $("h1").scrollIntoView({ behavior: "smooth" });
+  if (!isShow) play(true);
+}
+
+async function gallery() {
+  const idx = await loadNeossatIndex();
+  const objs = idx.objects;
+  $("galintro").innerHTML = `We searched ${idx.n_candidates ?? "?"} Solar System objects (our movers, asteroids 1-20, near-Earth asteroids with close approaches, ` +
+    `bright comets of 2025-26). <b>${idx.n_in_both ?? "?"}</b> fall inside images from <b>both</b> NEOSSat and SPHEREx during the SPHEREx survey ` +
+    `(May 2025 → Oct 2026); NEOSSat, a 15 cm telescope, clearly <b>detects ${objs.length}</b> of them: all comets. ` +
+    `The near-Earth asteroids were too faint (predicted V 17.5-29) or only caught during slews. Click a comet to play it above.`;
+  const box = $("gallery");
+  box.innerHTML = "";
+  for (const o of objs) {
+    const d = document.createElement("div");
+    d.className = "pair gcard"; d.dataset.slug = o.slug; d.style.cursor = "pointer";
+    d.innerHTML = `<div style="font-weight:600">${o.name}</div><div class="cap">${o.kind} · NEOSSat ${o.n_neossat} frames · SPHEREx ${o.n_spherex} images` +
+      `${o.n_detected != null ? ` · detected in ${o.n_detected}` : ""}<br>${o.first ?? ""} → ${o.last ?? ""}</div>`;
+    d.onclick = () => loadObject(o.slug, true);
+    box.appendChild(d);
+  }
+}
+
+try {
+  $("slider").oninput = (e) => show(+e.target.value);
+  $("prev").onclick = () => { play(false); show(cur - 1); };
+  $("next").onclick = () => { play(false); show(cur + 1); };
+  $("play").onclick = () => play(!timer);
+  $("fps").onchange = () => { if (timer) play(true); };
+  $("which").onchange = setView;
+  $("strip").onclick = (e) => { const i = e.target.dataset?.i; if (i != null) { play(false); show(+i); } };
+  addEventListener("resize", () => { if (slug === "3i-atlas") drawLC(); });
+  flybys();
+  await loadObject(slug, false);
+  gallery().catch((e) => { $("galintro").textContent = "Gallery not available: " + e.message; });
+} catch (e) {
+  $("err").textContent = "Could not load the NEOSSat data: " + e.message;
+  console.error(e);
+}
+</script>
+</body>
+</html>

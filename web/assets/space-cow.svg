@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Space Valley's astronaut cow">
+  <defs>
+    <radialGradient id="glass" cx="38%" cy="30%" r="75%">
+      <stop offset="0" stop-color="#e9ecff" stop-opacity=".55"/>
+      <stop offset=".35" stop-color="#8b93ff" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#4c3fa8" stop-opacity=".35"/>
+    </radialGradient>
+    <linearGradient id="suit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d9ddf0"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b9bfe8"/><stop offset=".5" stop-color="#f4f5ff"/><stop offset="1" stop-color="#9aa1d4"/>
+    </linearGradient>
+  </defs>
+  <!-- suit / shoulders with cow patches -->
+  <path d="M38 196 C40 160 62 146 100 146 C138 146 160 160 162 196 Z" fill="url(#suit)" stroke="#2b2f55" stroke-width="3"/>
+  <path d="M58 172 C64 160 80 162 82 172 C84 182 70 188 62 184 C56 181 55 177 58 172 Z" fill="#23243a"/>
+  <path d="M128 166 C136 160 148 166 146 176 C144 184 132 184 128 178 C125 174 125 169 128 166 Z" fill="#23243a"/>
+  <rect x="88" y="168" width="24" height="16" rx="4" fill="#8b93ff" stroke="#2b2f55" stroke-width="2.5"/>
+  <circle cx="95" cy="176" r="2.4" fill="#f2c46d"/><circle cx="105" cy="176" r="2.4" fill="#6ee7b7"/>
+  <!-- helmet collar -->
+  <ellipse cx="100" cy="148" rx="50" ry="11" fill="url(#ring)" stroke="#2b2f55" stroke-width="3"/>
+  <!-- horns (poke above the head inside the glass) -->
+  <path d="M66 62 C58 52 58 40 66 34 C68 44 72 52 78 58 Z" fill="#f4e3c1" stroke="#2b2f55" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M134 62 C142 52 142 40 134 34 C132 44 128 52 122 58 Z" fill="#f4e3c1" stroke="#2b2f55" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- ears -->
+  <path d="M60 80 C44 76 36 82 34 90 C46 94 56 92 64 88 Z" fill="#ffffff" stroke="#2b2f55" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M41 87 C47 89 53 89 58 87" fill="none" stroke="#f6a6b8" stroke-width="3" stroke-linecap="round"/>
+  <path d="M140 80 C156 76 164 82 166 90 C154 94 144 92 136 88 Z" fill="#ffffff" stroke="#2b2f55" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M159 87 C153 89 147 89 142 87" fill="none" stroke="#f6a6b8" stroke-width="3" stroke-linecap="round"/>
+  <!-- head -->
+  <path d="M100 52 C126 52 138 68 138 90 C138 108 132 120 126 128 L74 128 C68 120 62 108 62 90 C62 68 74 52 100 52 Z" fill="#ffffff" stroke="#2b2f55" stroke-width="3"/>
+  <!-- patches -->
+  <path d="M70 66 C78 58 92 60 92 70 C92 80 80 86 72 82 C66 79 65 71 70 66 Z" fill="#23243a"/>
+  <path d="M118 58 C128 58 136 66 134 76 C130 74 122 74 116 70 C112 66 113 60 118 58 Z" fill="#23243a"/>
+  <!-- tuft -->
+  <path d="M92 54 C94 46 100 44 104 50 C106 44 112 46 110 54" fill="#ffffff" stroke="#2b2f55" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- eyes -->
+  <ellipse cx="84" cy="90" rx="6.5" ry="8" fill="#1b1d33"/><circle cx="86.2" cy="87" r="2.4" fill="#fff"/>
+  <ellipse cx="116" cy="90" rx="6.5" ry="8" fill="#1b1d33"/><circle cx="118.2" cy="87" r="2.4" fill="#fff"/>
+  <ellipse cx="74" cy="104" rx="5" ry="3" fill="#f6a6b8" opacity=".7"/><ellipse cx="126" cy="104" rx="5" ry="3" fill="#f6a6b8" opacity=".7"/>
+  <!-- muzzle -->
+  <path d="M74 112 C74 102 86 98 100 98 C114 98 126 102 126 112 C126 124 114 130 100 130 C86 130 74 124 74 112 Z" fill="#f6a6b8" stroke="#2b2f55" stroke-width="3"/>
+  <ellipse cx="90" cy="112" rx="3.6" ry="5" fill="#9b4a63"/><ellipse cx="110" cy="112" rx="3.6" ry="5" fill="#9b4a63"/>
+  <path d="M93 122 C97 125 103 125 107 122" fill="none" stroke="#9b4a63" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- glass helmet -->
+  <circle cx="100" cy="92" r="68" fill="url(#glass)" stroke="#c9ceff" stroke-width="4"/>
+  <path d="M58 70 C66 46 88 34 112 36" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity=".7"/>
+  <circle cx="132" cy="44" r="4" fill="#ffffff" opacity=".75"/>
+  <!-- antenna with a star -->
+  <path d="M146 40 L158 18" stroke="#c9ceff" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M158 8 L161 15 L168 16 L163 21 L164 28 L158 24 L152 28 L153 21 L148 16 L155 15 Z" fill="#f2c46d" stroke="#2b2f55" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

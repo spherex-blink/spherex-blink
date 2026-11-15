@@ -1,0 +1,17 @@
+# Python 3.12 (see docs/SETUP.md). Install into the venv with:
+#   python -m uv pip install --python .venv/Scripts/python.exe -r requirements.txt
+numpy==2.5.4
+astropy==8.0.2
+astroquery==0.4.11
+reproject==0.21.0
+scipy==1.18.1
+matplotlib==3.11.2
+pillow==13.0.0
+pyvo==1.10.0
+requests==2.34.2
+fsspec==2026.9.0
+s3fs==2026.9.0
+astropy-healpix==2.0.1
+pyarrow==26.0.1
+jupyterlab==4.6.6
+ipykernel==7.4.0

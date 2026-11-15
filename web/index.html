@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPHEREx Blink</title>
+<meta name="description" content="See how the infrared sky changes: blink NASA SPHEREx images of any point to spot what moves and what varies.">
+<link rel="icon" href="assets/cow/cow-head-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/cow/cow-head-64.png" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="assets/cow/cow-head-180.png">
+<link rel="stylesheet" href="style.css">
+<link rel="preload" href="assets/allsky_17.jpg" as="image" fetchpriority="high">
+<link rel="preconnect" href="https://nasa-irsa-spherex.s3.amazonaws.com" crossorigin>
+<link rel="preconnect" href="https://irsa.ipac.caltech.edu" crossorigin>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<div id="stage"></div>
+<canvas id="view2d" aria-label="Sky image"></canvas>
+<div id="locBox" title="Where you are in the sky. Click to switch to the sky dome."><canvas id="locator" width="320" height="160" aria-label="All-sky map: current position"></canvas><div id="locLabel" class="ltr"></div></div>
+
+<button id="btnMenu" type="button" aria-expanded="false" aria-controls="panel"><span class="burger" aria-hidden="true"></span><span>Controls</span></button>
+<div id="poweredBy" title="Made by team Space Valley (Halal Haemek), NASA Space Apps 2026"><img src="assets/space-valley-128.png" alt="Space Valley logo" width="40" height="40"><span>Powered by<b>Space Valley</b></span></div>
+<div id="detBar" role="group" aria-label="Detector (wavelength)" hidden>
+  <span class="dlabel">Detector</span>
+  <button data-det="auto" title="Best detector for this view">Auto</button>
+  <button data-det="1" title="D1 · 0.75–1.1 µm (near-infrared, sharpest star fields)">D1</button>
+  <button data-det="2" title="D2 · 1.1–1.6 µm">D2</button>
+  <button data-det="3" title="D3 · 1.6–2.4 µm">D3</button>
+  <button data-det="4" title="D4 · 2.4–3.8 µm">D4</button>
+  <button data-det="5" title="D5 · 3.8–4.4 µm (includes the 4.3 µm CO₂ band)">D5</button>
+  <button data-det="6" title="D6 · 4.4–5.0 µm (coldest objects: brown dwarfs)">D6</button>
+  <button id="detAll" type="button" title="Fetch one image per detector at this point and show all six side by side">All 6 detectors</button>
+</div>
+
+<aside id="panel" aria-label="Controls">
+  <header class="phead">
+    <div class="ptitle">
+      <h1><img class="cow" src="assets/cow/cow-head-64.png" alt="" width="34" height="34">SPHEREx Blink</h1>
+      <button id="btnMenuClose" type="button" class="iconbtn" aria-label="Close controls" title="Close (Esc)">✕</button>
+    </div>
+    <div class="sub">See how the infrared sky changes: what moves, what varies</div>
+    <div class="btns"><button id="btnWalk" type="button" class="primary" title="A guided tour: one button per feature, each with a prepared example that shows at once">▶ Walkthrough: every feature, step by step</button></div>
+    <div id="status" class="status">Loading…</div>
+    <div class="btns vr"><span id="vrSlot"></span></div>
+  </header>
+
+  <details class="sec" open>
+    <summary>Place</summary>
+    <div class="body">
+      <div id="presets" class="chips"></div>
+      <div class="row two">
+        <label>RA (°)<input id="inRa" type="text" inputmode="decimal" placeholder="133.7951"></label>
+        <label>Dec (°)<input id="inDec" type="text" inputmode="decimal" placeholder="-7.2451"></label>
+      </div>
+      <div class="row two load">
+        <label>Or object name<input id="inName" type="text" placeholder="Vega, M31, Proxima Cen"></label>
+        <button id="btnLoad" class="primary">Load</button>
+      </div>
+      <div class="btns"><button id="btnSave" title="Saves the place, settings and marks in this browser">⭐ Save point</button><button id="btnForget" title="The dome keeps a small marker for each point you opened before; this removes them" disabled>Forget remembered points (0)</button></div>
+      <div class="row"><label class="t">Saved points</label></div>
+      <div id="savedList" class="chips"></div>
+    </div>
+  </details>
+
+  <details class="sec" open>
+    <summary>Explore</summary>
+    <div class="body">
+      <div id="exploreList" class="chips"></div>
+      <a id="lnkCanada" class="cta" href="lib/spherex/demo-canada.html" target="_blank" rel="noopener">🇨🇦 Interstellar comet 3I/ATLAS: Canada's NEOSSat + NASA's SPHEREx →</a>
+    </div>
+  </details>
+
+  <details class="sec" open>
+    <summary>Time</summary>
+    <div class="body">
+      <div class="btns">
+        <button id="btnPlay">⏸ Pause</button>
+        <button id="btnPrev" aria-label="Previous frame">◀</button><button id="btnNext" aria-label="Next frame">▶</button>
+        <label class="inline">Speed <input id="inSpeed" type="range" min="0.5" max="10" step="0.5" value="2"></label>
+      </div>
+      <input id="inTime" type="range" min="0" max="0" step="1" value="0" aria-label="Timeline">
+      <div id="timeLabel" class="small ltr"></div>
+    </div>
+  </details>
+
+  <details class="sec" open>
+    <summary>View</summary>
+    <div class="body">
+      <div class="seg" id="uiSeg"><button data-v="2d" class="on">2D</button><button data-v="dome">Sky dome</button></div>
+      <div class="seg" id="modeSeg">
+        <button data-v="blink" class="on">Blink</button><button data-v="diff">Difference</button><button data-v="stack">Stack</button>
+      </div>
+      <div class="checks">
+        <label><input id="cbCoords" type="checkbox"> Coordinate grid (RA/Dec)</label>
+        <label><input id="cbGrid" type="checkbox"> Pixel grid</label>
+        <label><input id="cbPred" type="checkbox" checked> Cross at the target's predicted position, with its path</label>
+      </div>
+      <div class="btns"><button id="btnZoomIn" aria-label="Zoom in">🔍+</button><button id="btnZoomOut" aria-label="Zoom out">🔍−</button><button id="btnZoomReset">Reset</button></div>
+      <div class="btns"><button id="btnFly">🔭 Fly to target</button><button id="btnAllSky">🌌 All sky</button></div>
+    </div>
+  </details>
+
+  <details class="sec">
+    <summary>Image settings</summary>
+    <div class="body">
+      <div class="row two">
+        <label>Field of view<select id="inHalf">
+          <option value="15">3.1′</option><option value="30" selected>6.2′</option><option value="60">12.3′</option><option value="100">20.5′</option>
+        </select></label>
+        <label>Detector<select id="inDet">
+          <option value="auto">Auto (long wavelength)</option>
+          <option value="1">D1 · 0.75–1.1 µm</option><option value="2">D2 · 1.1–1.6 µm</option><option value="3">D3 · 1.6–2.4 µm</option>
+          <option value="4">D4 · 2.4–3.8 µm</option><option value="5">D5 · 3.8–4.4 µm</option><option value="6">D6 · 4.4–5.0 µm</option>
+        </select></label>
+      </div>
+      <div class="row"><label>Surroundings (loaded with the point)<select id="inCtx">
+        <option value="0">None</option><option value="60">12′</option><option value="100" selected>20′</option><option value="150">31′</option>
+      </select></label></div>
+      <div class="row two">
+        <label>Frames<select id="inFrames"><option value="visits">One per visit</option><option value="ends">First and last visit</option><option value="exposures">Every exposure</option></select></label>
+        <label>Stack per visit<select id="inStack"><option value="0">None</option><option value="4">4 exposures</option><option value="8" selected>8 exposures</option><option value="16">16 exposures</option></select></label>
+      </div>
+      <div class="row"><label>View mode<select id="inView" title="Fixed sky: stars stay put and the object moves, so you see motion. Tracking: the object stays centred and the stars move, good for fast objects.">
+        <option value="sky">Fixed sky: the object moves (shows motion)</option><option value="track">Tracking: object centred, stars move</option></select></label></div>
+      <div class="row two">
+        <label>Stretch<select id="inStretch"><option value="asinh">asinh</option><option value="log">log</option><option value="linear">Linear</option></select></label>
+        <label>Colours<select id="inCmap"><option value="grey">Grey</option><option value="heat">Heat</option><option value="inv">Inverted</option></select></label>
+      </div>
+      <div class="row"><label class="t">White point (contrast)</label><input id="inWhite" type="range" min="950" max="999.9" step="0.5" value="995" aria-label="White point percentile"></div>
+      <div class="row"><label class="t">Smoothing <b id="smoothLabel">0</b></label><input id="inSmooth" type="range" min="0" max="2" step="0.25" value="0" aria-label="Smoothing"></div>
+      <div class="checks"><label><input id="cbLive" type="checkbox" checked> Live data from NASA (off: saved samples only, works offline)</label></div>
+      <div class="row"><label class="t">Sky dome colour <b id="domeLabel" class="ltr"></b></label><input id="inDome" type="range" min="0" max="101" step="1" value="17" aria-label="All-sky map wavelength"></div>
+      <div class="checks"><label><input id="cbConeOver" type="checkbox"> Red cone lines over the image (default: behind it)</label></div>
+      <div class="row two" id="reliefRow" hidden>
+        <label>Height<input id="inRelief" type="range" min="0.05" max="0.6" step="0.05" value="0.15"></label>
+        <label>Tilt (°)<input id="inTilt" type="range" min="0" max="75" step="5" value="50"></label>
+      </div>
+      <div class="small">In the sky dome you stand inside SPHEREx's DR1 all-sky map (102 colours). Drag to look around, wheel to zoom, <b>click a point in the sky to load its images</b>.</div>
+    </div>
+  </details>
+
+  <details class="sec">
+    <summary>Analysis</summary>
+    <div class="body">
+      <div class="btns"><button id="btnMotion" disabled title="Measures how the target (or the marked object) moves between frames and draws an arrow">➜ Show direction and speed</button></div>
+      <div id="motionInfo" class="reads"></div>
+      <div id="legend" class="small legend"></div>
+      <div id="ctxNote" class="small"></div>
+
+      <h3>Deep stack</h3>
+      <div class="btns"><button id="btnDeep" title="Aligns all exposures along the object's predicted motion and adds them: this finds faint moving objects">✨ Deep stack (shift-and-stack)</button></div>
+      <div id="deepBox" hidden>
+        <div id="deepVerdict"></div>
+        <div class="two">
+          <figure><canvas id="cvDeepN" width="4" height="4"></canvas><figcaption>Normal stack (stars aligned) <b id="deepSnrN" class="ltr"></b></figcaption></figure>
+          <figure><canvas id="cvDeepT" width="4" height="4"></canvas><figcaption>Following the object's motion <b id="deepSnrT" class="ltr"></b></figcaption></figure>
+        </div>
+      </div>
+
+      <h3>Detection filter</h3>
+      <div class="checks"><label><input id="cbDetect" type="checkbox"> Turn on detection</label>
+        <label><input id="cbDetDiff" type="checkbox"> Detect changes only (on the difference)</label></div>
+      <div class="row two">
+        <label>Minimum size<select id="inMinSize"><option value="1">1×1 pixel</option><option value="4">2×2</option><option value="9" selected>3×3</option><option value="25">5×5</option></select></label>
+        <label><span>Threshold: <b id="sigLabel">5</b>σ</span><input id="inSigma" type="range" min="3" max="10" step="0.5" value="5"></label>
+      </div>
+
+      <h3>Track an object</h3>
+      <div class="small">Click the image to mark an object and follow it through every frame.</div>
+      <div class="btns"><button id="btnTrackTarget">Track the target</button><button id="btnClear">Clear marks</button></div>
+      <div id="trackInfo" class="reads"></div>
+      <canvas id="chart" width="600" height="260" aria-label="Light curve"></canvas>
+      <div class="seg small-seg" id="chartSeg"><button data-v="light" class="on">Light curve</button><button data-v="spec">Spectrum</button><button data-v="survey">Survey light curve</button></div>
+    </div>
+  </details>
+
+  <details class="sec">
+    <summary>Image details</summary>
+    <div class="body">
+      <div id="reads" class="reads"></div>
+    </div>
+  </details>
+
+  <footer class="foot">
+    <p><b>Keys:</b> drag to pan, wheel to zoom, Space play/pause, ←/→ step, D difference, M track target.
+    VR: trigger on the image marks an object, trigger elsewhere steps a frame, grip pauses, stick zooms and steps.</p>
+    <p><b>Data:</b> SPHEREx Level 2 images (DR1/QR3) from NASA/IPAC IRSA's public archive; SPHEREx DR1 all-sky map (HiPS); names via CDS Sesame;
+    NEOSSat data courtesy of the Canadian Space Agency (CSA) via CADC.</p>
+    <p>Detections are <b>candidates</b>, not discoveries. Built with the help of Claude (AI). The astronaut cow art is AI-generated (Google Gemini).</p>
+    <p class="pb"><img src="assets/space-valley-128.png" alt="" width="28" height="28"> Powered by <b>Space Valley</b> · team Halal Haemek (חלל העמק), NASA Space Apps 2026, Haifa</p>
+  </footer>
+</aside>
+
+<script>
+// collapsible control drawer: closed by default, state remembered per browser
+(function () {
+  var KEY = 'skyblink.menu', btn = document.getElementById('btnMenu'), close = document.getElementById('btnMenuClose');
+  function fire() { requestAnimationFrame(function () { window.dispatchEvent(new Event('resize')); }); }
+  function nudge() {   // let the 2D viewer re-fit to the free area (now and after the slide finishes)
+    fire(); setTimeout(fire, 600);
+  }
+  document.getElementById('panel').addEventListener('transitionend', function (e) { if (e.target === this && e.propertyName === 'transform') fire(); });
+  function set(open, save) {
+    document.body.classList.toggle('menu-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.setAttribute('aria-label', open ? 'Close controls' : 'Open controls');
+    if (save) { try { localStorage.setItem(KEY, open ? 'open' : 'closed'); } catch (e) {} }
+    nudge();
+  }
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  set(saved === 'open', false);
+  btn.addEventListener('click', function () { set(!document.body.classList.contains('menu-open'), true); });
+  close.addEventListener('click', function () { set(false, true); btn.focus(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('menu-open')) { set(false, true); btn.focus(); }
+  });
+})();
+</script>
+<script type="module">
+// load the newest app.js after every publish: the version comes from build.json (never cached), so a stale browser cache can't keep an old app
+const v = await fetch('build.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : {})).then((b) => b.commit || b.built_utc || '').catch(() => '');
+const css = document.querySelector('link[href="style.css"]'); if (css && v) css.href = 'style.css?v=' + v;
+await import('./app.js' + (v ? '?v=' + v : ''));
+import('./walkthrough.js' + (v ? '?v=' + v : ''));     // Walkthrough mode (guided demo of every feature)
+</script>
+</body>
+</html>

@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPHEREx blink data-layer demo</title>
+<style>
+body{font:14px system-ui,sans-serif;margin:16px;background:#111;color:#ddd}
+input,select,button{font:inherit;padding:4px 6px;margin:2px}
+#q{width:260px}
+.row{margin:4px 0}
+canvas{image-rendering:pixelated;display:block;margin:10px 0;border:1px solid #444;max-width:100%}
+#info{font-family:ui-monospace,monospace;font-size:13px}
+#label{font-family:ui-monospace,monospace;font-size:14px;color:#fff}
+#err{color:#f88}
+.sw{display:inline-block;width:10px;height:10px;vertical-align:middle}
+#slider{width:260px;vertical-align:middle}
+#speed{width:110px;vertical-align:middle}
+.pair{display:flex;flex-wrap:wrap;gap:16px}
+figure{margin:0}
+figcaption{font-family:ui-monospace,monospace;font-size:13px}
+#verdict{font-size:16px;font-weight:600;margin:8px 0}
+#verdict.yes{color:#7ee787}#verdict.no{color:#ffb86c}
+#dp{width:260px;vertical-align:middle}
+#lcbox canvas{image-rendering:auto;background:#161616}
+#lcverdict{font-size:16px;font-weight:600;margin:8px 0}#lcverdict.yes{color:#7ee787}#lcverdict.no{color:#ffb86c}
+#lcleg{font-size:12px;max-width:760px;line-height:1.7}
+#lcp{width:260px;vertical-align:middle}
+</style></head><body>
+<h3>SPHEREx blink: data-layer test page</h3>
+<div class="row">
+  <input id="q" value="Barnard's Star" placeholder="name or ra, dec">
+  <select id="fr" title="frames"><option value="ends">frames: ends</option><option value="visits" selected>frames: visits</option><option value="exposures">frames: exposures</option></select>
+  <select id="stack" title="exposures stacked per visit"><option value="0">stack: off</option><option value="4">stack: 4</option><option value="8" selected>stack: 8</option><option value="16">stack: 16</option></select>
+  <select id="mode" title="sky = fixed grid, track = grid follows the target"><option value="sky">mode: sky</option><option value="track">mode: track</option></select>
+  <select id="half" title="field of view (half-width in 6.15 arcsec pixels)"><option value="15">FOV: 15 px (3.1')</option><option value="30" selected>FOV: 30 px (6.2')</option><option value="60">FOV: 60 px (12.3')</option><option value="100">FOV: 100 px (20.5')</option></select>
+  <select id="det"><option value="auto">detector: auto</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+  <button id="go">Blink</button>
+  <button id="lc" title="Brightness of the star over time from the SPHEREx images, and its spectrum">Light curve</button>
+  <button id="deep"title="Align every exposure of one detector on the target's predicted position and add them up">Deep stack (shift-and-stack)</button>
+</div>
+<div id="presets" class="row"></div>
+<div class="row"><b>Solar System:</b> <span id="movers"></span>
+  <select id="mmode" title="fly-by: stars fixed, object moves; follow: object centred, stars stream past"><option value="flyby">fly-by: stars fixed</option><option value="follow">follow: object centred</option></select>
+  <select id="mspan" title="burst: consecutive exposures within minutes; run: gaps up to 12 h"><option value="burst">burst: minutes</option><option value="run">run: hours-days</option></select>
+</div>
+<div id="about" class="row"></div>
+<div class="row">
+  <button id="play">Pause</button> <button id="prev">&lt;</button> <button id="next">&gt;</button>
+  <input id="slider" type="range" min="0" max="0" value="0">
+  speed <input id="speed" type="range" min="0.5" max="8" step="0.5" value="2"> <span id="fps">2 fps</span>
+  <label><input id="diff" type="checkbox"> difference vs first frame</label>
+</div>
+<canvas id="cv" width="366" height="366"></canvas>
+<div id="label">-</div>
+<div id="info"></div><div id="err"></div>
+<div id="legend"></div>
+<div id="lcbox" hidden>
+  <div id="lcprog"><progress id="lcp" max="1" value="0"></progress> <span id="lcptxt"></span></div>
+  <div id="lcverdict"></div>
+  <div id="lcmeta"></div>
+  <div class="pair">
+    <figure><canvas id="cvLC" width="640" height="340"></canvas><figcaption>light curve: brightness relative to the star's typical value in each SPHEREx channel</figcaption></figure>
+    <figure><canvas id="cvSP" width="560" height="340"></canvas><figcaption>spectrum, one colour per visit</figcaption></figure>
+  </div>
+  <div id="lcleg"></div>
+</div>
+<div id="deepbox" hidden>
+  <div id="deepprog"><progress id="dp" max="1" value="0"></progress> <span id="dptxt"></span></div>
+  <div id="verdict"></div>
+  <div class="pair">
+    <figure><canvas id="cvN"></canvas><figcaption>normal stack (stars aligned)<br><span id="snrN"></span></figcaption></figure>
+    <figure><canvas id="cvT"></canvas><figcaption>shift-and-stack (target aligned)<br><span id="snrT"></span></figcaption></figure>
+  </div>
+  <div id="dinfo"></div>
+</div>
+<script type="module">
+import { SkyIndex, getBlink, getDeepStack, getMoverVideo, getLightCurve, loadLightCurve, loadMovers, loadMover, resolveName } from "./index.mjs";
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const indexUrl = params.get("index") || new URL("../../index/", location.href).href;
+const PRESETS = {
+  "Barnard's Star": "Barnard's Star", "Epsilon Indi B": "eps Ind B", "WISE 0855": "WISE J085510.83-071442.5",
+  "RW Aurigae": "RW Aur", "R Draconis": "R Dra",
+};
+for (const [label, nm] of Object.entries(PRESETS)) {
+  const b = document.createElement("button"); b.textContent = label;
+  b.onclick = () => { $("q").value = nm; run(); }; $("presets").append(b);
+}
+const NAN_RGB = [255, 0, 200], NAN_DIFF_RGB = [0x39, 0xff, 0x14];   // magenta (normal) / bright green (difference): "no data" must never look like sky
+let moverCtx = null;   // set while a Solar System video is shown: {mover, mode, res}
+let index, frames = [], shown = 0, playing = true, timer = null, ctrl = null, stretch = null, dstretch = null;
+
+const ndig = (x, d = 3) => (Number.isFinite(x) ? x.toFixed(d) : "?");
+function median(a) { const f = Float32Array.from(a.filter(Number.isFinite)).sort(); return f.length ? f[f.length >> 1] : 0; }
+function pct(vals, p) { vals.sort((a, b) => a - b); return vals[Math.floor(p * (vals.length - 1))]; }
+
+function computeStretch() {
+  const vals = [];
+  for (const f of frames) {
+    f.med = median(f.data);
+    for (let i = 0; i < f.data.length; i += 2) { const v = f.data[i]; if (Number.isFinite(v)) vals.push(v - f.med); }
+  }
+  if (!vals.length) { stretch = { lo: 0, hi: 1, s: 1, a0: 0, a1: 1 }; return; }
+  const lo = pct(vals, 0.01), hi = pct(vals, 0.995);
+  const s = Math.max(hi - lo, 1e-9) / 10;       // asinh softening, shared by all frames
+  stretch = { lo, hi, s, a0: Math.asinh(lo / s), a1: Math.asinh(hi / s) };
+}
+function computeDiffStretch() {
+  const f0 = frames[0], vals = [];
+  for (const f of frames.slice(1)) for (let i = 0; i < f.data.length; i += 2) {
+    const d = (f.data[i] - f.med) - (f0.data[i] - f0.med);
+    if (Number.isFinite(d)) vals.push(Math.abs(d));
+  }
+  const m = vals.length ? Math.max(pct(vals, 0.995), 1e-9) : 1;
+  dstretch = { m, s: m / 10, a: Math.asinh(10) };
+}
+
+const MV_A0 = Math.asinh(-2), MV_A1 = Math.asinh(10);
+function normaliseMoverFrame(f) {
+  const fin = []; for (let i = 0; i < f.data.length; i++) if (Number.isFinite(f.data[i])) fin.push(f.data[i]);
+  fin.sort((a, b) => a - b);
+  const med = fin.length ? fin[fin.length >> 1] : 0, dev = fin.map((v) => Math.abs(v - med)).sort((a, b) => a - b);
+  f.med = med; f.sig = Math.max((dev.length ? dev[dev.length >> 1] : 0) * 1.4826, 1e-9);
+}
+function zoomFor(n) { return Math.max(2, Math.floor(600 / n)); }
+function draw() {
+  if (!frames.length) return;
+  shown = Math.min(Math.max(shown, 0), frames.length - 1);
+  const f = frames[shown], f0 = frames[0], cv = $("cv"), ctx = cv.getContext("2d"), n = f.width, Z = zoomFor(n);
+  const mv = moverCtx, diff = !mv && $("diff").checked && frames.length > 1;
+  if (mv && !f.sig) normaliseMoverFrame(f);
+  if (diff && !dstretch) computeDiffStretch();
+  cv.width = cv.height = n * Z;
+  const small = document.createElement("canvas"); small.width = small.height = n;
+  const sc = small.getContext("2d"), img = sc.createImageData(n, n);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const k = (n - 1 - r) * n + c, o = (r * n + c) * 4;     // flip rows: north up
+    let rgb;
+    if (diff) {
+      const d = (f.data[k] - f.med) - (f0.data[k] - f0.med);
+      if (!Number.isFinite(d)) rgb = NAN_DIFF_RGB;
+      else {
+        const t = Math.max(-1, Math.min(1, Math.asinh(d / dstretch.s) / dstretch.a));    // -1 blue ... 0 white ... +1 red
+        const w = Math.round(255 * (1 - Math.abs(t)));
+        rgb = t >= 0 ? [255, w, w] : [w, w, 255];
+      }
+    } else if (mv) {      // each frame by its own robust sigma (frames alternate between detectors), one asinh stretch -2..+10 sigma
+      const v = f.data[k];
+      if (!Number.isFinite(v)) rgb = NAN_RGB;
+      else { const t = Math.min(1, Math.max(0, (Math.asinh((v - f.med) / f.sig) - MV_A0) / (MV_A1 - MV_A0))), g = Math.round(255 * t); rgb = [g, g, g]; }
+    } else {
+      const v = f.data[k];
+      if (!Number.isFinite(v)) rgb = NAN_RGB;
+      else {
+        const t = Math.min(1, Math.max(0, (Math.asinh((v - f.med) / stretch.s) - stretch.a0) / (stretch.a1 - stretch.a0)));
+        const g = Math.round(255 * t); rgb = [g, g, g];
+      }
+    }
+    img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255;
+  }
+  sc.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(small, 0, 0, n * Z, n * Z);
+  const x = (f.targetPx[0] + 0.5) * Z, y = (n - 1 - f.targetPx[1] + 0.5) * Z;
+  if (mv) {
+    if (mv.mode === "flyby" && frames.length > 1) {      // whole predicted path
+      ctx.strokeStyle = "#ff9a1f"; ctx.lineWidth = 1; ctx.beginPath();
+      frames.forEach((g, i) => { const px = (g.targetPx[0] + 0.5) * Z, py = (n - 1 - g.targetPx[1] + 0.5) * Z; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); });
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "#4fc3f7"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, Math.max(6, 2.5 * Z), 0, 2 * Math.PI); ctx.stroke();
+    $("label").textContent = `${mv.mover.name} · ${f.date_time.replace("T", " ").replace("Z", "")} UTC · D${f.det} · ${ndig(f.lambda_um)} µm · Δ ${ndig(f.delta_au, 3)} AU · frame ${shown + 1}/${frames.length}`;
+    $("slider").max = frames.length - 1; $("slider").value = shown;
+    $("legend").innerHTML = `<span class="sw" style="background:#ff00c8"></span> magenta = no data; each frame scaled by its own robust sigma (asinh, -2 to +10 sigma); cyan circle = predicted object position` +
+      `${mv.mode === "flyby" ? ", orange line = whole predicted path" : ""}; north up, east left`;
+    return;
+  }
+  const lam = f.lambda_min_um != null ? `${ndig(f.lambda_um)} µm (${ndig(f.lambda_min_um)}-${ndig(f.lambda_max_um)})` : `${ndig(f.lambda_um)} µm`;
+  $("label").textContent = `${f.date} · D${f.det} · ${lam}${f.n_stack ? ` · ×${f.n_stack} stacked` : ""} · frame ${shown + 1}/${frames.length}` +
+    `${f.saturatedAtTarget ? " · NaN at target" : ""}${diff ? " · difference vs frame 1" : ""}`;
+  $("slider").max = frames.length - 1; $("slider").value = shown;
+  $("legend").innerHTML = diff
+    ? `<span class="sw" style="background:#ff4040"></span> brighter than first frame &nbsp; <span class="sw" style="background:#4040ff"></span> fainter &nbsp; <span class="sw" style="background:#39ff14"></span> green = no data in one of the two frames`
+    : `<span class="sw" style="background:#ff00c8"></span> magenta = no data (saturated core, dead pixel, off detector); one shared stretch for all frames; north up, east left`;
+}
+function startLoop() {
+  clearInterval(timer);
+  timer = setInterval(() => { if (playing && frames.length > 1) { shown = (shown + 1) % frames.length; draw(); } }, 1000 / +$("speed").value);
+}
+function setPlaying(p) { playing = p; $("play").textContent = p ? "Pause" : "Play"; }
+$("play").onclick = () => setPlaying(!playing);
+$("prev").onclick = () => { setPlaying(false); shown = (shown - 1 + frames.length) % frames.length; draw(); };
+$("next").onclick = () => { setPlaying(false); shown = (shown + 1) % frames.length; draw(); };
+$("slider").oninput = () => { setPlaying(false); shown = +$("slider").value; draw(); };
+$("speed").oninput = () => { $("fps").textContent = `${$("speed").value} fps`; startLoop(); };
+$("diff").onchange = draw;
+
+async function run() {
+  moverCtx = null; $("about").textContent = "";
+  if (ctrl) ctrl.abort();
+  ctrl = new AbortController(); const signal = ctrl.signal;
+  $("deepbox").hidden = true; frames = []; shown = 0; dstretch = null; stretch = null; $("err").textContent = ""; $("info").textContent = "resolving...";
+  setPlaying(true);
+  try {
+    if (!index) index = await SkyIndex.load(indexUrl);
+    const q = $("q").value.trim();
+    const m = q.match(/^\s*(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)\s*$/);
+    const target = m ? { name: q, ra: +m[1], dec: +m[2], pm_mas_yr: null } : await resolveName(q);
+    $("info").textContent = `${target.name}: ra ${target.ra.toFixed(5)} dec ${target.dec.toFixed(5)} pm ${JSON.stringify(target.pm_mas_yr)}; fetching...`;
+    const det = $("det").value;
+    const res = await getBlink(index, {
+      ra: target.ra, dec: target.dec, pm: target.pm_mas_yr, name: target.name,
+      detector: det === "auto" ? "auto" : +det, frames: $("fr").value, stack: +$("stack").value, mode: $("mode").value, half: +$("half").value,
+      signal,
+      onFrame: (f, i, total, prog) => {
+        frames.push(f); frames.sort((a, b) => a.mjd - b.mjd);
+        dstretch = null; computeStretch(); draw(); startLoop();
+        $("info").textContent = `${target.name}: ${frames.length}/${total} frames ready (${prog.fetched}/${prog.exposures} exposures fetched)`;
+      },
+    });
+    dstretch = null; computeStretch(); draw(); startLoop();
+    const o = res.options;
+    $("info").textContent = `${target.name} · D${res.detector} · ${res.frames.length} frames (${o.frames}, stack ${o.stack || "off"}, ${o.mode}, half ${o.half}${res.grid.autoHalf ? " auto-enlarged" : ""}) · ` +
+      `${res.n_exposures} exposures · ${res.visits.length} visits · data as of MJD ${index.meta.data_as_of_mjd} · timing_s ${JSON.stringify(res.timing_s)}`;
+  } catch (e) {
+    if (e.name !== "AbortError") { $("err").textContent = e.message; $("info").textContent = ""; }
+  }
+}
+
+// ---- Solar System movers
+const moversUrl = new URL("./movers/", location.href).href;
+let moverList = [];
+async function runMover(slug) {
+  if (ctrl) ctrl.abort();
+  ctrl = new AbortController(); const signal = ctrl.signal;
+  $("deepbox").hidden = true; frames = []; shown = 0; $("err").textContent = ""; moverCtx = null; setPlaying(true);
+  try {
+    const mv = await loadMover(moversUrl, slug);
+    $("about").textContent = mv.about || "";
+    $("info").textContent = `${mv.name}: fetching...`;
+    const mode = $("mmode").value, span = $("mspan").value;
+    const ctx = { mover: { name: mv.name, slug }, mode };
+    moverCtx = ctx;
+    const res = await getMoverVideo(mv, {
+      mode, span, signal,
+      onFrame: (f, done, total) => {
+        f.width = f.height = Math.round(Math.sqrt(f.data.length));
+        frames.push(f); frames.sort((a, b) => a.mjd - b.mjd || a.det - b.det);
+        draw(); startLoop();
+        $("info").textContent = `${mv.name}: ${frames.length}/${total} frames ready`;
+      },
+    });
+    ctx.res = res; moverCtx = ctx;
+    for (const f of res.frames) { f.width = f.height = res.n; }
+    frames = res.frames.slice();       // already in (mjd, det) order
+    shown = 0; draw(); startLoop();
+    const dts = res.frames.map((f) => f.mjd), hours = (Math.max(...dts) - Math.min(...dts)) * 24;
+    $("info").textContent = `${mv.name} · ${res.frames.length} frames over ${hours < 2 ? (hours * 60).toFixed(1) + " min" : hours < 48 ? hours.toFixed(1) + " h" : (hours / 24).toFixed(1) + " d"} · ${res.mode}, ${res.span}, half ${res.half} px · timing_s ${JSON.stringify(res.timing_s)}`;
+  } catch (e) {
+    if (e.name !== "AbortError") { $("err").textContent = e.message; $("info").textContent = ""; }
+  }
+}
+loadMovers(moversUrl).then((list) => {
+  moverList = list;
+  for (const m of list) {
+    const b = document.createElement("button"); b.textContent = m.name.replace(/ \(.*\)$/, "");
+    b.title = m.name;
+    b.onclick = () => { $("mmode").value = m.default.mode; $("mspan").value = m.default.span; runMover(m.slug); };
+    $("movers").append(b);
+  }
+}).catch((e) => { $("movers").textContent = "(movers/index.json not found)"; });
+$("mmode").onchange = $("mspan").onchange = () => { const cur = moverCtx?.mover?.slug; if (cur) runMover(cur); };
+
+// ---- deep stack: shift-and-stack of one detector over the whole survey
+function drawStack(cv, data, n, overlay) {
+  const Z = Math.max(2, Math.floor(480 / n)), fin = [];
+  for (let i = 0; i < data.length; i++) if (Number.isFinite(data[i])) fin.push(data[i]);
+  fin.sort((a, b) => a - b);
+  const med = fin.length ? fin[fin.length >> 1] : 0;
+  const dev = fin.map((v) => Math.abs(v - med)).sort((a, b) => a - b);
+  const sig = Math.max((dev.length ? dev[dev.length >> 1] : 0) * 1.4826, 1e-9);     // robust sigma of THIS stack
+  const lo = -2 * sig, hi = 8 * sig, a0 = Math.asinh(lo / sig), a1 = Math.asinh(hi / sig);
+  cv.width = cv.height = n * Z;
+  const small = document.createElement("canvas"); small.width = small.height = n;
+  const sc = small.getContext("2d"), img = sc.createImageData(n, n);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const v = data[(n - 1 - r) * n + c], o = (r * n + c) * 4;      // flip rows: north up
+    let rgb;
+    if (!Number.isFinite(v)) rgb = NAN_RGB;
+    else { const t = Math.min(1, Math.max(0, (Math.asinh((v - med) / sig) - a0) / (a1 - a0))), g = Math.round(255 * t); rgb = [g, g, g]; }
+    img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255;
+  }
+  sc.putImageData(img, 0, 0);
+  const ctx = cv.getContext("2d"); ctx.imageSmoothingEnabled = false; ctx.drawImage(small, 0, 0, n * Z, n * Z);
+  overlay(ctx, (x) => (x + 0.5) * Z, (y) => (n - 1 - y + 0.5) * Z);
+}
+const mjdMonth = (m) => new Date((m - 40587) * 86400000).toISOString().slice(0, 7);
+async function runDeep() {
+  moverCtx = null; $("about").textContent = "";
+  if (ctrl) ctrl.abort();
+  ctrl = new AbortController(); const signal = ctrl.signal;
+  clearInterval(timer); frames = [];
+  $("err").textContent = ""; $("info").textContent = "resolving..."; $("deepbox").hidden = false; $("deepprog").hidden = false;
+  $("verdict").textContent = ""; $("verdict").className = ""; $("dinfo").textContent = ""; $("snrN").textContent = $("snrT").textContent = "";
+  for (const id of ["cvN", "cvT"]) { const c = $(id); c.width = c.height = 4; }
+  $("dp").value = 0; $("dptxt").textContent = "looking up exposures...";
+  try {
+    if (!index) index = await SkyIndex.load(indexUrl);
+    const q = $("q").value.trim();
+    const m = q.match(/^\s*(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)\s*$/);
+    const target = m ? { name: q, ra: +m[1], dec: +m[2], pm_mas_yr: null } : await resolveName(q);
+    $("info").textContent = `${target.name}: ra ${target.ra.toFixed(5)} dec ${target.dec.toFixed(5)} pm ${JSON.stringify(target.pm_mas_yr)}; deep stack...`;
+    const det = $("det").value;
+    const res = await getDeepStack(index, {
+      ra: target.ra, dec: target.dec, pm: target.pm_mas_yr, name: target.name, detector: det === "auto" ? "auto" : +det, signal,
+      onProgress: (d, t) => { $("dp").max = t || 1; $("dp").value = d; $("dptxt").textContent = `${d}/${t} exposures fetched and aligned`; },
+    });
+    $("deepprog").hidden = true;
+    const n = res.n, c = res.center_px;
+    drawStack($("cvN"), res.sky, n, (ctx, X, Y) => {
+      const p = res.sky_target_px; if (p.length < 2) return;
+      ctx.strokeStyle = "#ff9a1f"; ctx.lineWidth = 1; ctx.beginPath();
+      p.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.stroke();
+    });
+    drawStack($("cvT"), res.track, n, (ctx, X, Y) => {
+      const x = X(c[0]), y = Y(c[1]);
+      ctx.strokeStyle = "#4fc3f7"; ctx.lineWidth = 1; ctx.beginPath();
+      ctx.moveTo(x - 14, y); ctx.lineTo(x - 5, y); ctx.moveTo(x + 5, y); ctx.lineTo(x + 14, y);
+      ctx.moveTo(x, y - 14); ctx.lineTo(x, y - 5); ctx.moveTo(x, y + 5); ctx.lineTo(x, y + 14); ctx.stroke();
+    });
+    $("snrN").textContent = `S/N ${ndig(res.snr_sky, 1)} at the predicted position`;
+    $("snrT").textContent = `S/N ${ndig(res.snr_track, 1)} at the centre`;
+    const span = `D${res.detector}, ${mjdMonth(res.mjd_range[0])} → ${mjdMonth(res.mjd_range[1])}`;
+    $("verdict").textContent = res.detected ? `Detected: S/N ${ndig(res.snr_track, 1)} in ${res.n_used} exposures (${span})` : `Not detected (S/N ${ndig(res.snr_track, 1)}) in ${res.n_used} exposures (${span})`;
+    $("verdict").className = res.detected ? "yes" : "no";
+    $("dinfo").textContent = `${res.n_used} of ${res.n_available} D${res.detector} exposures used · ${ndig(res.lambda_min_um, 2)}-${ndig(res.lambda_max_um, 2)} µm · each exposure's own median removed, 3-sigma clipped mean · ` +
+      `shared stretch per canvas: asinh from -2 to +8 sigma of that stack · magenta = no data · north up, east left · timing_s ${JSON.stringify(res.timing_s)}`;
+    $("info").textContent = `${target.name}: deep stack done`;
+  } catch (e) {
+    if (e.name !== "AbortError") { $("err").textContent = e.message; $("info").textContent = ""; $("deepprog").hidden = true; }
+  }
+}
+// ---- light curve + spectrum (pre-computed for the five test targets, live from S3 for anything else)
+const LC_SLUG = { "barnard's star": "barnard", "eps ind b": "epsindB", "epsilon indi b": "epsindB", "wise j085510.83-071442.5": "wise0855", "wise 0855": "wise0855", "rw aur": "rwaur", "r dra": "rdra" };
+const LC_PUBLISHED = { rdra: "published ~245 d" };
+const lcUrl = new URL("./lightcurves/", location.href).href;
+const wlColor = (lam) => { const t = Math.min(1, Math.max(0, Math.log(lam / 0.75) / Math.log(5 / 0.75))); return `hsl(${Math.round(285 * (1 - t))},85%,58%)`; };
+const visitColor = (i) => `hsl(${Math.round((i * 137.508) % 360)},75%,60%)`;
+function niceTicks(lo, hi, n = 5) {
+  const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag, st = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag, t = [];
+  for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9 * st; v += st) t.push(+v.toPrecision(10));
+  return t;
+}
+function chartFrame(cv, xlab, ylab) {
+  const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, M = { l: 56, r: 16, t: 14, b: 38 };
+  ctx.clearRect(0, 0, W, H); ctx.font = "12px system-ui,sans-serif"; ctx.fillStyle = "#ddd"; ctx.strokeStyle = "#666"; ctx.lineWidth = 1;
+  ctx.strokeRect(M.l + 0.5, M.t + 0.5, W - M.l - M.r, H - M.t - M.b);
+  ctx.textAlign = "center"; ctx.fillText(xlab, M.l + (W - M.l - M.r) / 2, H - 6);
+  ctx.save(); ctx.translate(13, M.t + (H - M.t - M.b) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(ylab, 0, 0); ctx.restore();
+  return { ctx, W, H, M, pw: W - M.l - M.r, ph: H - M.t - M.b };
+}
+function drawLightCurve(cv, lc) {
+  const pts = lc.points.filter((p) => p.detected && p.rel != null), V = lc.visits;
+  const { ctx, W, H, M, pw, ph } = chartFrame(cv, "date", "relative brightness");
+  if (!pts.length) { ctx.textAlign = "center"; ctx.fillStyle = "#aaa"; ctx.fillText(`no detections at S/N >= ${lc.min_snr} in single images`, W / 2, H / 2); return; }
+  const xs = pts.map((p) => p.mjd).concat(V.map((v) => v.mjd)), x0 = Math.min(...xs) - 5, x1 = Math.max(...xs) + 5;
+  const ys = pts.map((p) => p.rel).sort((a, b) => a - b), q = (f) => ys[Math.floor(f * (ys.length - 1))];
+  let y0 = Math.min(q(0.01), 0.9), y1 = Math.max(q(0.99), 1.1);
+  for (const v of V) for (const b of ["sw", "lw"]) if (v["rel_" + b] != null) { const e = v["rel_" + b + "_err"] || 0; y0 = Math.min(y0, v["rel_" + b] - e); y1 = Math.max(y1, v["rel_" + b] + e); }
+  const pad = 0.05 * (y1 - y0); y0 -= pad; y1 += pad;
+  const X = (m) => M.l + (m - x0) / (x1 - x0) * pw, Y = (v) => M.t + (1 - (v - y0) / (y1 - y0)) * ph;
+  ctx.fillStyle = "#ddd"; ctx.strokeStyle = "#333"; ctx.textAlign = "right";
+  for (const t of niceTicks(y0, y1)) { ctx.beginPath(); ctx.moveTo(M.l, Y(t) + 0.5); ctx.lineTo(M.l + pw, Y(t) + 0.5); ctx.stroke(); ctx.fillText(t.toFixed(2), M.l - 4, Y(t) + 4); }
+  ctx.textAlign = "center";
+  const all = []; for (let m = Math.ceil((x0 - 40587) / 30.4375); 40587 + m * 30.4375 <= x1; m++) all.push(40587 + m * 30.4375);
+  const step = Math.max(1, Math.ceil(all.length / 7)), seen = new Set();
+  all.forEach((mj, i) => {
+    if (i % step) return; const lab = new Date((mj - 40587) * 86400000).toISOString().slice(0, 7); if (seen.has(lab)) return; seen.add(lab);
+    ctx.fillText(lab, X(mj), M.t + ph + 15); ctx.fillStyle = "#666"; ctx.fillRect(X(mj), M.t + ph, 1, 4); ctx.fillStyle = "#ddd";
+  });
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = "#aaa"; ctx.beginPath(); ctx.moveTo(M.l, Y(1) + 0.5); ctx.lineTo(M.l + pw, Y(1) + 0.5); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalAlpha = 0.55; for (const p of pts) { ctx.fillStyle = wlColor(p.lambda_um); ctx.beginPath(); ctx.arc(X(p.mjd), Y(p.rel), 1.8, 0, 6.2832); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  if (lc.period && lc.variable) {       // period fit: thin curve
+    const P = lc.period, [a, b] = P.phase_coef; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.globalAlpha = 0.7; ctx.beginPath();
+    for (let i = 0; i <= 300; i++) { const m = x0 + (x1 - x0) * i / 300, v = P.mean + a * Math.sin(2 * Math.PI * m / P.period_d) + b * Math.cos(2 * Math.PI * m / P.period_d); if (i) ctx.lineTo(X(m), Y(v)); else ctx.moveTo(X(m), Y(v)); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  for (const [band, col] of [["sw", "#5ab4ff"], ["lw", "#ff6a4d"]]) {
+    const L = V.filter((v) => v["rel_" + band] != null); ctx.strokeStyle = ctx.fillStyle = col; ctx.lineWidth = 1.6;
+    ctx.beginPath(); L.forEach((v, i) => { if (i) ctx.lineTo(X(v.mjd), Y(v["rel_" + band])); else ctx.moveTo(X(v.mjd), Y(v["rel_" + band])); }); ctx.stroke();
+    for (const v of L) {
+      const e = v["rel_" + band + "_err"];
+      if (e) { ctx.beginPath(); ctx.moveTo(X(v.mjd), Y(v["rel_" + band] - e)); ctx.lineTo(X(v.mjd), Y(v["rel_" + band] + e)); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(X(v.mjd), Y(v["rel_" + band]), 3.2, 0, 6.2832); ctx.fill();
+    }
+  }
+  ctx.lineWidth = 1;
+  const bx = M.l + pw - 120, by = M.t + 8;       // wavelength colour bar
+  for (let i = 0; i < 100; i++) { ctx.fillStyle = wlColor(0.75 * (5 / 0.75) ** (i / 99)); ctx.fillRect(bx + i, by, 1, 8); }
+  ctx.fillStyle = "#ddd"; ctx.textAlign = "left"; ctx.fillText("0.75", bx, by + 21); ctx.textAlign = "right"; ctx.fillText("5 µm", bx + 100, by + 21);
+  ctx.textAlign = "left"; ctx.fillStyle = "#5ab4ff"; ctx.fillText("● visit median, 0.75-2.4 µm (D1-3)", M.l + 8, M.t + 14);
+  ctx.fillStyle = "#ff6a4d"; ctx.fillText("● visit median, 2.4-5 µm (D4-6)", M.l + 8, M.t + 29);
+}
+function drawSpectrum(cv, lc) {
+  const pts = lc.points.filter((p) => p.detected && p.flux_mJy > 0), V = lc.visits;
+  const { ctx, M, pw, ph } = chartFrame(cv, "wavelength (µm)", "flux (mJy)");
+  if (!pts.length) return [];
+  const x0 = 0.7, x1 = 5.2, fl = pts.map((p) => p.flux_mJy), ly0 = Math.floor(Math.log10(Math.min(...fl)) * 4) / 4, ly1 = Math.ceil(Math.log10(Math.max(...fl)) * 4) / 4;
+  const X = (l) => M.l + (l - x0) / (x1 - x0) * pw, Y = (f) => M.t + (1 - (Math.log10(f) - ly0) / (ly1 - ly0 || 1)) * ph;
+  ctx.textAlign = "center"; ctx.fillStyle = "#ddd"; ctx.strokeStyle = "#333";
+  for (const t of [1, 2, 3, 4, 5]) { ctx.fillText(t, X(t), M.t + ph + 15); ctx.beginPath(); ctx.moveTo(X(t) + 0.5, M.t); ctx.lineTo(X(t) + 0.5, M.t + ph); ctx.stroke(); }
+  ctx.textAlign = "right";
+  for (let e = Math.floor(ly0) - 1; e <= Math.ceil(ly1); e++) for (const k of [1, 2, 5]) {
+    const f = k * 10 ** e, lf = Math.log10(f); if (lf < ly0 - 1e-9 || lf > ly1 + 1e-9) continue;
+    ctx.beginPath(); ctx.moveTo(M.l, Y(f) + 0.5); ctx.lineTo(M.l + pw, Y(f) + 0.5); ctx.stroke(); ctx.fillText(String(+f.toPrecision(3)), M.l - 4, Y(f) + 4);
+  }
+  const vi = (m) => { let b = 0, bd = Infinity; V.forEach((v, i) => { const d = Math.abs(v.mjd - m); if (d < bd) { bd = d; b = i; } }); return b; };
+  ctx.globalAlpha = 0.7; for (const p of pts) { ctx.fillStyle = visitColor(vi(p.mjd)); ctx.beginPath(); ctx.arc(X(p.lambda_um), Y(p.flux_mJy), 2, 0, 6.2832); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  return V.map((v, i) => `<span class="sw" style="background:${visitColor(i)}"></span> ${v.date}`);
+}
+function verdictText(lc, slug) {
+  const nm = lc.target.name || "target", v = lc.verdict;
+  if (v.note) return [nm + ": " + v.note, "no"];
+  if (lc.variable) {
+    const per = lc.period ? `period ${lc.period.period_d.toFixed(0)} d${LC_PUBLISHED[slug] ? " (" + LC_PUBLISHED[slug] + ")" : ""}, ` : "";
+    const band = { all: "all channels", sw: "0.75-2.4 µm", lw: "2.4-5 µm" }[v.band];
+    return [`${nm}: VARIABLE: ${per}${v.sigma.toFixed(0)}σ (strongest change ${(100 * v.change).toFixed(0)}% in ${band}, ${v.from} → ${v.to})`, "yes"];
+  }
+  return [`${nm}: steady (${v.sigma}σ; no visit-to-visit change above 5σ)`, "no"];
+}
+async function runLC() {
+  moverCtx = null; $("about").textContent = "";
+  if (ctrl) ctrl.abort();
+  ctrl = new AbortController(); const signal = ctrl.signal;
+  clearInterval(timer); frames = []; $("deepbox").hidden = true;
+  $("err").textContent = ""; $("info").textContent = "resolving..."; $("lcbox").hidden = false; $("lcprog").hidden = false;
+  $("lcverdict").textContent = ""; $("lcverdict").className = ""; $("lcmeta").textContent = ""; $("lcleg").innerHTML = ""; $("lcp").value = 0; $("lcptxt").textContent = "";
+  for (const id of ["cvLC", "cvSP"]) { const c = $(id); c.getContext("2d").clearRect(0, 0, c.width, c.height); }
+  try {
+    const q = $("q").value.trim(), slug = LC_SLUG[q.toLowerCase()];
+    let lc, live = false;
+    if (slug) { lc = await loadLightCurve(lcUrl, slug); $("info").textContent = `${lc.target.name}: pre-computed light curve (all images)`; }
+    else {
+      live = true;
+      if (!index) index = await SkyIndex.load(indexUrl);
+      const m = q.match(/^\s*(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)\s*$/);
+      const target = m ? { name: q, ra: +m[1], dec: +m[2], pm_mas_yr: null } : await resolveName(q);
+      $("info").textContent = `${target.name}: ra ${target.ra.toFixed(5)} dec ${target.dec.toFixed(5)} pm ${JSON.stringify(target.pm_mas_yr)}; measuring a sample of up to 120 images live from S3...`;
+      lc = await getLightCurve(index, { ra: target.ra, dec: target.dec, pm: target.pm_mas_yr, name: target.name, maxExposures: 120, signal,
+        onProgress: (d, t, ph) => { $("lcp").max = t || 1; $("lcp").value = d; $("lcptxt").textContent = `${d}/${t} images measured (${ph})`; } });
+      $("info").textContent = `${target.name}: live light curve done`;
+    }
+    $("lcprog").hidden = true;
+    const [txt, cls] = verdictText(lc, slug); $("lcverdict").textContent = txt; $("lcverdict").className = cls;
+    $("lcmeta").textContent = `method: ${lc.method === "ring" ? "wing photometry: star saturated (ring 3.5-7 px)" : "aperture (r = 2 px)"} · ${lc.n_detected} of ${lc.n_images} images detected at S/N ≥ ${lc.min_snr}` +
+      `${live ? ` · a SAMPLE of up to 120 evenly spaced images, not all of them (${lc.seconds} s)` : " · pre-computed from all images"} · ${lc.visits.length} visits · typical scatter of steady stars ${(100 * lc.noise_floor_rel).toFixed(0)}% per point`;
+    drawLightCurve($("cvLC"), lc);
+    $("lcleg").innerHTML = drawSpectrum($("cvSP"), lc).join(" &nbsp; ");
+  } catch (e) {
+    if (e.name !== "AbortError") { $("err").textContent = e.message; $("info").textContent = ""; $("lcprog").hidden = true; }
+  }
+}
+$("lc").onclick = runLC;
+$("deep").onclick = runDeep;
+$("go").onclick = run;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+</script></body></html>

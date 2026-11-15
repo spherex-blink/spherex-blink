@@ -1,0 +1,5 @@
+{"_doc":"Solar System objects with SPHEREx-centred positions per exposure (made by pipeline/movers/refine.py). Each file: name, slug, about, exposures[{key, obs, det, mjd, ra, dec, delta_au}].",
+"movers":[
+{"slug":"162882","name":"2001 FD58 (near-Earth asteroid)","default":{"mode":"flyby","span":"burst"}},
+{"slug":"3i-atlas","name":"3I/ATLAS (interstellar comet)","default":{"mode":"follow","span":"run"}},
+{"slug":"vesta","name":"4 Vesta (asteroid)","default":{"mode":"flyby","span":"run"}}]}
